@@ -1,11 +1,18 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
+#include <stdbool.h>
 #include <malloc.h>
 #include <string.h>
 #include <Windows.h>
+#include <conio.h>
 #include <io.h> // access() : 파일이나 디렉토리(폴더)의 존재 유무, 혹은 파일의 권한 및 속성을 조사할 때 사용한다.
 
 #define MAX 128
+#define MORE_MAX 1024
+
+void fullscreen() {
+	SetConsoleDisplayMode(GetStdHandle(STD_OUTPUT_HANDLE), CONSOLE_FULLSCREEN_MODE, 0);
+}
 
 void str_clear(char string[], int size)
 {
@@ -19,10 +26,10 @@ int auto_find_column(char filename[]) {
 
 	int column_cnt = 0;
 
-	char line[MAX];
+	char line[MORE_MAX];
 	line[0] = '\0';
 
-	fgets(line, MAX, fpR);
+	fgets(line, MORE_MAX, fpR);
 
 	char* ptr = strtok(line, ",");
 
@@ -42,37 +49,79 @@ int auto_find_row(char filename[]) {
 
 	int row_cnt = 0;
 
-	char line[MAX];
+	char line[MORE_MAX];
 	line[0] = '\0';
+	fgets(line, MORE_MAX, fpR); // header 버리기.
 	while (feof(fpR) == 0)
 	{
-		fgets(line, MAX, fpR);
+		fgets(line, MORE_MAX, fpR);
 		row_cnt++;
 	}
 	fclose(fpR);
 
-	return row_cnt - 1; // feof()는 함수의 끝의 기준은 마지막 줄이 아닌 마지막 \n이다. 그러므로 \n을 찾기까지 반복한다. 결론 : 마지막 줄에 도달해도 한 번더 반복하므로 1을 빼줘야 한다.
+	return row_cnt; // feof()는 함수의 끝의 기준은 마지막 줄이 아닌 마지막 \n이다. 그러므로 \n을 찾기까지 반복한다. 결론 : 마지막 줄에 도달해도 한 번더 반복하므로 1을 빼줘야 한다.
+}
+
+// 숫자면 0을 반환
+// 그 이외의 값이면 1을 반환
+int check_word(char ptr2[])
+{
+	int IsString = false;
+	int test = strlen(ptr2);
+	for (unsigned int i = 0; i < strlen(ptr2); i++)
+	{
+		if (ptr2[i] >= 48 && ptr2[i] <= 57) // 숫자
+			IsString = false;
+		else if (ptr2[i] == '.')
+			IsString = false;
+		else if (ptr2[i] == '\n')
+			IsString = false;
+		else
+		{
+			IsString = true;
+			break;
+		}
+	}
+
+	if (IsString)
+		return 1;
+	else
+		return 0;
 }
 
 
-// 정수 0, 실수 1, 문자열 2, None -1
-int check_type(char ptr[])
+// 실수 1, 문자열 2, None -1
+void check_type(char filename[], char* order_column_type, int* double_cnt, int* string_cnt, int total_column)
 {
-	// 정수 = 0
-	if (strcmp("정수", ptr) == 0) {
-		return 0;
+	FILE* fpR = fopen(filename, "r");
+	
+	char line[MORE_MAX];
+	line[0] = '\0';
+
+	fgets(line, MORE_MAX, fpR); // header 버림
+
+	fgets(line, MORE_MAX, fpR);
+	char* ptr2 = strtok(line, ",");
+	for (int i = 0; i<total_column; i++)
+	{
+		int return_value = check_word(ptr2);
+		switch (return_value)
+		{
+		case 0:
+			order_column_type[i] = '0';
+			(*double_cnt)++;
+			break;
+		case 1:
+			order_column_type[i] = '1';
+			(*string_cnt)++;
+			break;
+		default:
+			break;
+		}
+		ptr2 = strtok(NULL, ",");
 	}
-	// 실수 = 1
-	else if (strcmp("실수", ptr) == 0) {
-		return 1;
-	}
-	// 문자열 = 2
-	else if (strcmp("문자열", ptr) == 0) {
-		return 2;
-	}
-	// None = -1
-	else
-		return -1;
+	order_column_type[total_column] = '\0';
+	fclose(fpR);
 }
 
 void mkdir_csv() {
@@ -91,20 +140,11 @@ void mkdir_csv() {
 }
 
 void connect_string_with_csv(char s1[], char* s2) {
-	sprintf(s2,"./csv/%s.csv", s1);
+	sprintf(s1,"./csv/%s.csv", s2);
 }
 
-int exist_csv_file(char* filename) {
-	char csv_name[MAX];
-	csv_name[0] = '\0';
-	filename[0] = '\0';
-	printf("< csv 디렉토리에 있는 *.csv 파일 >\n\n");
-	system("dir csv /b");
-
-	printf("\nEnter your csv name : ");
-	scanf_s("%s", csv_name, sizeof(csv_name));
-
-	connect_string_with_csv(csv_name, filename);
+int exist_csv_file(char* filename, char csv_name[]) {
+	connect_string_with_csv(filename, csv_name);
 
 	FILE* fpR = fopen(filename, "r");
 	if (fpR == NULL)
@@ -121,46 +161,78 @@ int exist_csv_file(char* filename) {
 	}
 }
 
-void print_csv(int** ptr_ptr_int, double** ptr_ptr_double, char*** ptr_ptr_string, char** ptr_ptr_header, int total_column, int total_row, char* order_column_type)
+void print_csv(double** ptr_ptr_double, char*** ptr_ptr_string, char** ptr_ptr_header, int total_column, int total_row, char* order_column_type)
 {
 	int i = 0, j = 0, k = 0;
-	for (int i = 0; i < total_column; i++)
-		printf("%-10s\t", ptr_ptr_header[i]);
+	for (int index = 0; index < total_column; index++)
+		printf("%-10s\t", ptr_ptr_header[index]);
 	printf("\n");
+	int one_by_one = 1;
 	for (int row_index = 0; row_index < total_row; row_index++)
 	{
-		for (int column_index = 0; column_index < total_column; column_index++)
+		if (one_by_one)
 		{
-			
-			switch (order_column_type[column_index])
-			{
-			case '0': // 정수
-				printf("%-10d\t", ptr_ptr_int[row_index][i]);
-				i++;
-				break;
+			char key = '\0';
+			key = _getch();
+			switch (key) {
+			case '\r':
+				for (int column_index = 0; column_index < total_column; column_index++)
+				{
 
-			case '1': // 실수
-				printf("%-10lf\t", ptr_ptr_double[row_index][j]);
-				j++;
-				break;
+					switch (order_column_type[column_index])
+					{
+					case '0': // 실수
+						printf("%-10.2lf\t", ptr_ptr_double[row_index][i]);
+						i++;
+						break;
 
-			case '2': // 문자열
-				printf("%-10s\t", ptr_ptr_string[row_index][k]);
-				k++;
-				break;
+					case '1': // 문자열
+						printf("%-10s\t", ptr_ptr_string[row_index][j]);
+						j++;
+						break;
 
+					default:
+						break;
+					}
+				}
+				i = 0, j = 0;
+				printf("\n");
+				break;
 			default:
+				one_by_one = 0;
 				break;
 			}
 		}
-		i = 0, j = 0, k = 0;
-		printf("\n");
+		else
+		{
+			for (int column_index = 0; column_index < total_column; column_index++)
+			{
+
+				switch (order_column_type[column_index])
+				{
+				case '0': // 실수
+					printf("%-10.2lf\t", ptr_ptr_double[row_index][i]);
+					j++;
+					break;
+
+				case '1': // 문자열
+					printf("%-10s\t", ptr_ptr_string[row_index][j]);
+					k++;
+					break;
+
+				default:
+					break;
+				}
+			}
+			i = 0, j = 0;
+			printf("\n");
+		}
 	}
 }
 
 void csv_format(char filename[]) {
 	int total_column = 0, total_row = 0, return_value = 0;
-	int int_cnt = 0, double_cnt = 0, string_cnt = 0;
+	int double_cnt = 0, string_cnt = 0;
 
 	/*system("cls");
 
@@ -176,54 +248,16 @@ void csv_format(char filename[]) {
 
 	char* order_column_type = (char*)malloc(sizeof(char) * total_column + 1);
 
-	char type_name[7];
-	type_name[0] = '\0';
-
 	system("cls");
-	printf("\t       <자료형 보기>\n\n정수\t실수\t문자열\n\n만약, 자료형이 '정수'라면 '정수'를 입력하세요.\n\n");
-	for (int i = 0; i < total_column; i++)
-	{
-		printf("%d 번째 행의 데이터 자료형은 무엇입니까?\n>>> ", i + 1);
-		scanf_s("%s", type_name, sizeof(type_name));
-		return_value = check_type(type_name);
-		switch (return_value)
-		{
-		// 정수
-		case 0:
-			int_cnt++;
-			*(order_column_type + i) = '0';
-			break;
 
-		// 실수
-		case 1:
-			double_cnt++;
-			*(order_column_type + i) = '1';
-			break;
+	check_type(filename, order_column_type, &double_cnt, &string_cnt, total_column);
 
-		// 문자열
-		case 2:
-			string_cnt++;
-			*(order_column_type + i) = '2';
-			break;
-
-		// None
-		default:
-			printf("\n잘못 입력 하셨습니다. 다시 입력해주세요.\n\n");
-			i--;
-			break;
-		}
-	}
-	order_column_type[total_column] = '\0';
-
-	//printf("int_cnt = %d, float_cnt = %d, string_cnt = %d\n\n%s", int_cnt, float_cnt, string_cnt, order_column_type);
 
 	// 실수 2차원 배열 할당
 	double** ptr_ptr_double;
 	ptr_ptr_double = (double**)malloc(sizeof(double*) * total_row);
-
-	// 정수 2차원 배열 할당
-	int** ptr_ptr_int;
-	ptr_ptr_int = (int**)malloc(sizeof(int*) * total_row);
+	for (int i = 0; i < total_row; i++)
+		ptr_ptr_double[i] = (double*)malloc(sizeof(double) * double_cnt);
 
 	// 문자열 3차원 배열 할당
 	char*** ptr_ptr_string;
@@ -238,26 +272,15 @@ void csv_format(char filename[]) {
 		}
 	}
 
-	for (int i = 0; i < total_row; i++)
-	{
-		ptr_ptr_int[i] = (int*)malloc(sizeof(int) * int_cnt);
-		ptr_ptr_double[i] = (double*)malloc(sizeof(double) * double_cnt);
-
-		for (int j = 0; j < int_cnt; j++)
-			ptr_ptr_int[i][j] = 0;
-		for (int j = 0; j < double_cnt; j++)
-			ptr_ptr_double[i][j] = 0.0;
-	}
-
 	// 주의 사항
 	// 1. csv는 ANSI(아스키코드)와 호환된다. csv을 저장할 때 유니코드가 아닌 아스키코드로 저장할 것
 	//		(1.) 을 지키지 않을 경우 문자열이 깨져 한글이 아닌 쓰레기값을 가져온다.
 
 	FILE* fpR = fopen(filename, "r");
-	char line[MAX];
+	char line[MORE_MAX];
 	line[0] = '\0';
 
-	fgets(line, MAX, fpR); // 첫 줄은 각 column의 카테고리 이름이므로 2차원 배열을 만들어 저장한다.
+	fgets(line, MORE_MAX, fpR); // 첫 줄은 각 column의 카테고리 이름이므로 2차원 배열을 만들어 저장한다.
 
 	char* header_ptr = strtok(line, ",");
 
@@ -270,54 +293,47 @@ void csv_format(char filename[]) {
 		header_ptr = strtok(NULL, ",");
 	}
 	
-	str_clear(line, MAX);
+	str_clear(line, MORE_MAX);
 
 	int index = 0;
-	int i = 0, j = 0, k = 0, l = 0;
+	int i = 0, j = 0, k = 0;
 	while (feof(fpR) == 0)
 	{
-		fgets(line, MAX, fpR);
+		fgets(line, MORE_MAX, fpR);
 		char* ptr = strtok(line, ",");
 		while(ptr != NULL)
 		{
 			switch (order_column_type[index]) 
 			{
-			// 정수
+			// 실수
 			case '0':
-				sscanf(ptr, "%d", &ptr_ptr_int[l][i]);
+				sscanf(ptr, "%lf", &ptr_ptr_double[k][i]);
 				i++;
 				break;
 
-				// 실수
+			// 문자열
 			case '1':
-				sscanf(ptr, "%lf", &ptr_ptr_double[l][j]);
+				strcpy(ptr_ptr_string[k][j], ptr);
 				j++;
-				break;
-
-				// 문자열
-			case '2':
-				strcpy(ptr_ptr_string[l][k], ptr);
 				break;
 			}
 			ptr = strtok(NULL, ",");
 			index++;
 		}
-		str_clear(line, MAX);
-		index = 0, i = 0, j = 0, k = 0;
-		l++;
+		str_clear(line, MORE_MAX);
+		index = 0, i = 0, j = 0;
+		k++;
 	}
 	
 	fclose(fpR);
 	system("cls");
-	printf("모든 csv 데이터를 가져왔습니다!\n\n");
-	print_csv(ptr_ptr_int, ptr_ptr_double, ptr_ptr_string, ptr_ptr_header, total_column, total_row, order_column_type);
-	printf("\n\n1. 특정 열(column) 계산기\t2. 특정 행(row) 또는 열(column) 추출하기");
+	
+	printf("Success!, '%s' data!\n\n", filename);
+	print_csv(ptr_ptr_double, ptr_ptr_string, ptr_ptr_header, total_column, total_row, order_column_type);
+	printf("\n\n1. You use the particular column calculator\t2. You sample the particular row or column!");
 	for (int i = 0; i < total_row; i++)
-	{
-		free(ptr_ptr_int[i]);
 		free(ptr_ptr_double[i]);
-	}
-	free(ptr_ptr_int);
+
 	free(ptr_ptr_double);
 
 	for (int i = 0; i < total_row; i++)
@@ -343,10 +359,31 @@ void csv_format(char filename[]) {
 // 오류가 있으면 바로 종료된다.
 
 int main() {
+	fullscreen();
 	char filename[MAX + 10]; // + ./csv/*.txt(=10bytes)
-	mkdir_csv(); // csv 디렉토리가 있는지
-	exist_csv_file(filename); // csv 파일이 있는지
+	filename[0] = '\0';
 
-	csv_format(filename); // csv파일 format 묻기
+	char csv_name[MAX];
+	csv_name[0] = '\0';
+
+	mkdir_csv(); // csv 디렉토리가 있는지
+	while (1)
+	{
+		system("cls");
+
+		printf("< They are *.csv file in csv dir >\n\n");
+		system("dir csv /b");
+
+		printf("\nEnter your csv name [exit : -1]: ");
+		scanf_s("%s", csv_name, sizeof(csv_name));
+		if (strcmp(csv_name, "-1") == 0)
+			exit(1);
+
+		exist_csv_file(filename, csv_name); // csv 파일이 있는지
+
+		csv_format(filename); // csv파일 format 묻기
+		printf("\n\n");
+		system("pause");
+	}
 	return 0;
 }
